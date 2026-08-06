@@ -152,6 +152,7 @@ class TestUpdateSubmissionFromEjudge(TestCase):
 
         self.create_users()
         self.create_ejudge_problems()
+        self.create_judges()
 
         self.monitor_invalidate_mock = MagicMock()
 
@@ -178,7 +179,7 @@ class TestUpdateSubmissionFromEjudge(TestCase):
     def send_request_to_update_run(self, **data):
         data = json.dumps(data)
         url = url_for('problem.update_from_ejudge_v2')
-        resp = self.client.post(url, data=data)
+        resp = self.client.post(url, data=data, headers=self.judge_headers(1))
         return resp
 
 
@@ -217,11 +218,12 @@ class TestUpdateSubmissionFromEjudge(TestCase):
         chain.delay.assert_called_once()
 
     def test_missing_required_fields_is_bad_request(self):
-        # нет run_uuid / judge_id
+        # нет run_uuid (judge_id обязателен уже на уровне авторизации)
         resp = self.send_request_to_update_run(**{
             'run_id': self.run.ejudge_run_id,
             'contest_id': self.run.ejudge_contest_id,
             'status': EjudgeStatuses.OK.value,
+            'judge_id': 1,
         })
         self.assert400(resp)
 

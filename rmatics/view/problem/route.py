@@ -1,5 +1,6 @@
 from flask import Blueprint
 
+from rmatics.utils.auth import require_judge_token
 from rmatics.view.problem.problem import TrustedSubmitApi, ProblemApi, ProblemSubmissionsFilterApi
 from rmatics.view.problem.run import SourceApi, UpdateRunFromEjudgeAPIv1, UpdateRunFromEjudgeAPIv2, ProtocolApi, RunAPI
 
@@ -27,7 +28,7 @@ problem_blueprint.add_url_rule('/run/action/update_from_ejudge', methods=('POST'
                                view_func=UpdateRunFromEjudgeAPIv1.as_view('update_from_ejudge'))
 
 problem_blueprint.add_url_rule('/run/action/update_from_ejudge_v2', methods=('POST', ),
-                               view_func=UpdateRunFromEjudgeAPIv2.as_view('update_from_ejudge_v2'))
+                               view_func=require_judge_token(UpdateRunFromEjudgeAPIv2.as_view('update_from_ejudge_v2')))
 
 problem_blueprint.add_url_rule('/run/<int:run_id>/action/rejudge', methods=('POST', ),
                                view_func=RunAPI.as_view('rejudge_run'))

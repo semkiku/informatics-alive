@@ -158,7 +158,7 @@ class TestUpdateFromEjudgeE2E(TestCase):
         }
         data.update(kwargs)
         url = url_for('problem.update_from_ejudge_v2')
-        return self.client.post(url, json=data)
+        return self.client.post(url, json=data, headers=self.judge_headers(1))
 
     @mock.patch('rmatics.tasks.notify.fetch_protocol')
     def test_terminal_notification_updates_run_and_protocol(self, fetch_mock):
@@ -201,7 +201,8 @@ class TestUpdateFromEjudgeE2E(TestCase):
 
     def test_incomplete_notification_is_bad_request(self):
         url = url_for('problem.update_from_ejudge_v2')
-        resp = self.client.post(url, json={'run_id': 10, 'status': 0})
+        resp = self.client.post(url, json={'run_id': 10, 'status': 0, 'judge_id': 1},
+                                headers=self.judge_headers(1))
         self.assert400(resp)
 
 

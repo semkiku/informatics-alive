@@ -87,6 +87,11 @@ class TestCase(flask_testing.TestCase):
 
         redis.flushdb()
 
+    def judge_headers(self, judge_id: int) -> dict:
+        """Заголовок, с которым notify-worker судьи judge_id присылает
+        нотификации (токен ejudge api этого judge)."""
+        return {'Authorization': f'Bearer {self.judges[judge_id].get_token()}'}
+
     def get_session(self):
         with self.client.session_transaction() as session:
             return dict(session)
