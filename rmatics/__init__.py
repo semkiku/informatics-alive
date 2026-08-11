@@ -11,6 +11,7 @@ from rmatics.model.base import redis
 from rmatics.plugins import monitor_cacher, invalidator
 from rmatics.utils.centrifugo import centrifugo_client
 from rmatics.view import handle_api_exception
+from rmatics.view.judges.route import judges_blueprint
 from rmatics.view.monitors.route import monitor_blueprint
 from rmatics.view.problem.route import problem_blueprint
 
@@ -46,6 +47,7 @@ def create_app(config=None, config_logger=True):
 
     app.register_blueprint(problem_blueprint)
     app.register_blueprint(monitor_blueprint)
+    app.register_blueprint(judges_blueprint)
 
     app.cli.add_command(cli.test)
 

@@ -1,0 +1,89 @@
+name: tests
+
+on:
+  # Only push to master (merges): branches with an open PR are validated via
+  # pull_request, so a single commit never runs twice (push + pull_request).
+  push:
+    branches: [master]
+  pull_request:
+
+# A newer commit cancels the previous unfinished run on the same ref (single self-hosted runner).
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rmatics-tests:
+    # Allow only pushes (branch pushes require write access) and PRs from
+    # branches in this repository. Skip fork PRs so their code never runs on
+    # the self-hosted runner. Evaluated before the job is dispatched.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
+    # Run in a Python 3.6 container (matches production, deploy/Dockerfile = python:3.6),
+    # independent of the host runner's Python version. Requires Docker on the runner.
+    container:
+      image: python:3.6
+
+    # Real backing services, same as docker/docker-compose.yml. The lightweight
+    # sqlite/mongomock/fakeredis mode can't run here: no fakeredis release
+    # compatible with the pinned redis-py 4.2.0 supports Python 3.6.
+    services:
+      mariadb:
+        image: mariadb:5.5
+        env:
+          MYSQL_ROOT_PASSWORD: '123456'
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      mongo:
+        image: mongo:4.0
+        options: >-
+          --health-cmd="mongo --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      redis:
+        image: redis
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+
+    env:
+      FLASK_APP: wsgi:application
+      FLASK_ENV: testing
+      # `import rmatics` resolves from the repo root; `flask test` runs from the
+      # rmatics/ subdir (below) so the wsgi module is importable.
+      PYTHONPATH: ${{ github.workspace }}
+      # Service containers are reachable by their label as hostname.
+      SQLALCHEMY_DATABASE_URI: mysql+pymysql://root:123456@mariadb:3306/informatics
+      MONGO_URI: mongodb://mongo:27017/test
+      REDIS_URL: redis://redis:6379/0
+      URL_ENCODER_ALPHABET: sdgdfgbfhghg
+      SECRET_KEY: ci-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mysql client
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends default-mysql-client
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r rmatics/requirements.txt -r deploy/requirements-extra.txt
+
+      - name: Create databases
+        # Wait for mariadb to accept auth (health "alive" can precede the root
+        # grant being ready), then create the moodle/ejudge/pynformatics/informatics schemas.
+        run: |
+          for i in $(seq 1 30); do
+            if mysql -h mariadb -u root -p123456 -e "SELECT 1" >/dev/null 2>&1; then break; fi
+            echo "waiting for mariadb..."; sleep 2
+          done
+          mysql -h mariadb -u root -p123456 < docker/create-databases.sql
+
+      - name: Run rmatics tests
+        working-directory: rmatics
+        run: flask test
