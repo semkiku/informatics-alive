@@ -166,6 +166,39 @@ class ProtocolApi(MethodView):
 
         return jsonify(protocol)
 
+
+class RunStatusApi(MethodView):
+    """Вердикт и итоговый балл посылки — без протокола."""
+
+    get_args = {
+        'is_admin': fields.Boolean(default=False, missing=False),
+        'user_id': fields.Integer(),
+        'context_source': fields.Integer(default=0),
+    }
+
+    def get(self, run_id: int):
+        args = parser.parse(self.get_args, request)
+        is_admin = args.get('is_admin')
+        user_id = args.get('user_id')
+        context_source = args.get('context_source')
+
+        run_q = db.session.query(Run)
+
+        if context_source and context_source > 0 and not is_admin:
+            run_q = run_q.filter(or_(Run.context_source == context_source, Run.user_id == user_id))
+        elif not is_admin:
+            run_q = run_q.filter(Run.user_id == user_id)
+
+        run = run_q.filter(Run.id == run_id).one_or_none()
+
+        if run is None:
+            raise NotFound(f'Run with id #{run_id} is not found')
+
+        # ejudge_score = null, пока посылка не оттестирована
+        return jsonify({'ejudge_status': run.ejudge_status,
+                        'ejudge_score': run.ejudge_score})
+
+
 class UpdateRunFromEjudgeAPIv1(MethodView):
 
     def post(self):

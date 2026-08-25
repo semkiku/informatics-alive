@@ -326,3 +326,75 @@ class TestGetRunProtocol(TestCase):
 
         resp = self.send_request(run_id=self.run2.id, data=data)
         self.assert404(resp)
+
+
+class TestGetRunStatus(TestCase):
+    """Вердикт и балл по номеру посылки."""
+
+    def setUp(self):
+        super().setUp()
+
+        self.create_users()
+        self.create_ejudge_problems()
+
+        self.run = Run(
+            user_id=self.users[0].id,
+            problem=self.ejudge_problems[0],
+            problem_id=self.ejudge_problems[0].id,
+            ejudge_contest_id=self.ejudge_problems[0].ejudge_contest_id,
+            lang_id=1,
+            ejudge_status=EjudgeStatuses.PARTIAL.value,
+            ejudge_score=40,
+            ejudge_test_num=3,
+            ejudge_run_id=1,
+        )
+        # чужая посылка, ещё в очереди: балла нет
+        self.foreign_run = Run(
+            user_id=self.users[1].id,
+            problem=self.ejudge_problems[1],
+            problem_id=self.ejudge_problems[1].id,
+            ejudge_contest_id=self.ejudge_problems[1].ejudge_contest_id,
+            lang_id=1,
+            ejudge_status=EjudgeStatuses.IN_QUEUE.value,
+            ejudge_run_id=2,
+        )
+        db.session.add_all([self.run, self.foreign_run])
+        db.session.commit()
+
+    def send_request(self, run_id, data=None):
+        url = url_for('problem.run_status', run_id=run_id, **(data or {}))
+        return self.client.get(url)
+
+    def test_student_gets_own_verdict_and_score(self):
+        resp = self.send_request(self.run.id,
+                                 {'is_admin': False, 'user_id': self.run.user_id})
+
+        self.assert200(resp)
+        self.assertEqual(resp.json['data'],
+                         {'ejudge_status': EjudgeStatuses.PARTIAL.value,
+                          'ejudge_score': 40})
+
+    def test_super_permissions(self):
+        resp = self.send_request(self.foreign_run.id, {'is_admin': True})
+
+        self.assert200(resp)
+        self.assertEqual(resp.json['data']['ejudge_status'],
+                         EjudgeStatuses.IN_QUEUE.value)
+
+    def test_not_tested_run_has_null_score(self):
+        resp = self.send_request(self.foreign_run.id,
+                                 {'is_admin': False, 'user_id': self.foreign_run.user_id})
+
+        self.assert200(resp)
+        self.assertIsNone(resp.json['data']['ejudge_score'])
+
+    def test_student_try_lookup_not_own_run(self):
+        resp = self.send_request(self.foreign_run.id,
+                                 {'is_admin': False, 'user_id': self.run.user_id})
+
+        self.assert404(resp)
+
+    def test_not_found_run(self):
+        resp = self.send_request(777555, {'is_admin': True})
+
+        self.assert404(resp)
